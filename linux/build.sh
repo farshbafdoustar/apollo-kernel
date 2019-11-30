@@ -5,10 +5,12 @@
 #=================================================
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "${DIR}"
+mkdir kernel
+cd kernel
 
 #get original linux kernel
 function get_kernel() { 
-  kernel_version="4.4.32"
+  kernel_version="4.9.178"
   loadkernel_address="http://cdn.kernel.org/pub/linux/kernel/v4.x/linux-${kernel_version}.tar.xz"
   if [ -e ./Makefile ]
   then
@@ -19,7 +21,7 @@ function get_kernel() {
   info "Downloading linux kernel code from ${loadkernel_address}..." 
   wget ${loadkernel_address} 1>/dev/null 2>&1 
   tar -xvf linux-${kernel_version}.tar.xz 1>/dev/null 2>&1
-  rsync -a linux-${kernel_version}/* ${DIR}/
+  rsync -a linux-${kernel_version}/* ${DIR}/kernel
  }
 
 START_TIME=$(($(date +%s%N)/1000000))
@@ -97,7 +99,7 @@ export CPUNUM
 export OUTPUTDIR
 
 # +x for other build scripts
-chmod +x ./build*.sh ./install*.sh
+chmod +x "${DIR}"/build*.sh "${DIR}"/install*.sh
 
 function save_esd_files() {
   rm -rf drivers/esdcan.m
@@ -150,30 +152,43 @@ function kernel_cleanall() {
 }
 
 function kernel_patch() {
-    # patch pre_rt.patch
-    grep '#res' scripts/setlocalversion > /dev/null
+    # patch pre_rt_vetron.patch
+    grep '#res' ./scripts/setlocalversion > /dev/null
     if [ $? -ne 0 ]; then
-        k_patch patches/pre_rt.patch
+        k_patch ${DIR}/patches/pre_rt_vetron.patch
     fi
     # patch esdcan
     if [ ! -d drivers/esdcan ]; then
-        k_patch patches/esdcan.patch
+        k_patch ${DIR}/patches/esdcan.patch
     fi
     # patch e1000e.patch
-    grep E1000_DEV_ID_PCH_LBG_I219_LM3 drivers/net/ethernet/intel/e1000e/hw.h > /dev/null
+    #grep E1000_DEV_ID_PCH_LBG_I219_LM3 drivers/net/ethernet/intel/e1000e/hw.h > /dev/null
+    #if [ $? -ne 0 ]; then
+    #    k_patch ${DIR}/patches/e1000e.patch
+    #fi
+
+    # patch e1000e.patch
+    grep E1000_DEV_ID_PCH_CMP_I219_LM12 drivers/net/ethernet/intel/e1000e/hw.h > /dev/null
     if [ $? -ne 0 ]; then
-        k_patch patches/e1000e.patch
+        k_patch ${DIR}/patches/e1000e_I219_LM12.patch
     fi
+
     # patch inet_csk_clone_lock_double_free.patch
     grep mc_list ./net/ipv4/inet_connection_sock.c > /dev/null
     if [ $? -ne 0 ]; then
-        k_patch patches/inet_csk_clone_lock_double_free.patch
+        k_patch ${DIR}/patches/inet_csk_clone_lock_double_free.patch
     fi
     # patch cve_security.patch
     grep ahash_notify_einprogress crypto/ahash.c > /dev/null
     if [ $? -ne 0 ]; then
-        k_patch patches/cve_security.patch
+        k_patch ${DIR}/patches/cve_security.patch
     fi
+
+    # patch no_pie.patch
+    #grep fno-pie Makefile > /dev/null
+    #if [ $? -ne 0 ]; then
+    #    k_patch ${DIR}/patches/no_pie.patch
+    #fi
 }
 
 function prepare_nonrt() {
@@ -187,8 +202,8 @@ function prepare_nonrt() {
 
     grep 'config PREEMPT_RT_FULL' kernel/Kconfig.preempt > /dev/null
     if [ $? -eq 0 ]; then
-        k_patch_r patches/patch-4.4.32-rt43.patch
-        k_patch_r patches/nvidia-hung-semaphore-completion.patch
+        k_patch_r ${DIR}/patches/patch-4.4.32-rt43.patch
+        k_patch_r ${DIR}/patches/nvidia-hung-semaphore-completion.patch
         rm -f localversion-rt*
     fi
 
@@ -207,8 +222,8 @@ function prepare_rt() {
 
     grep 'config PREEMPT_RT_FULL' kernel/Kconfig.preempt > /dev/null
     if [ $? -ne 0 ]; then
-        k_patch patches/patch-4.4.32-rt43.patch
-        k_patch patches/nvidia-hung-semaphore-completion.patch
+        k_patch ${DIR}/patches/patch-4.9.178-rt131.patch
+        k_patch ${DIR}/patches/nvidia-hung-semaphore-completion.patch
         rm -f localversion-rt*
     fi
     export RT_VERSION=rt
@@ -232,8 +247,12 @@ function check_esd_files() {
   fi
 }
 function kernel_build() {
+   #preparing build environment
+   echo "preparing build environment by installing libncurses5-dev build-essential libssl-dev ccache"
+   sudo apt install libncurses5-dev build-essential libssl-dev ccache libelf-dev libelf-devel
+
     # make
-    cp -f ${_CONFIG_FILE} .config
+    cp -f ${DIR}/${_CONFIG_FILE} .config
     if [ $? -ne 0 ];then
       fail "no available config."
     fi
@@ -273,7 +292,7 @@ function kernel_build() {
     cp arch/x86/boot/bzImage ${INSTALL_PATH}/vmlinuz-${_KERNEL_VERSION}
     cp System.map ${INSTALL_PATH}/System.map-${_KERNEL_VERSION}
     cp .config ${INSTALL_PATH}/config-${_KERNEL_VERSION}
-    cp install*.sh ${INSTALL_PATH}
+    cp ${DIR}/install*.sh ${INSTALL_PATH}
 
     # build header
     # TODO to replace with an elegant method
@@ -345,8 +364,8 @@ case $1 in
     ;;
   *)
     kernel_patch
-    prepare_nonrt
-    kernel_build
+    #prepare_nonrt
+    #kernel_build
     prepare_rt
     kernel_build
     ;;
