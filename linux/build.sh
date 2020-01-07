@@ -6,6 +6,7 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "${DIR}"
 mkdir kernel
+cp -r drivers kernel/
 cd kernel
 
 #get original linux kernel
@@ -161,6 +162,11 @@ function kernel_patch() {
     if [ ! -d drivers/esdcan ]; then
         k_patch ${DIR}/patches/esdcan.patch
     fi
+
+    # patch cp1626
+    if [ -d drivers/cp1626 ]; then
+        k_patch ${DIR}/patches/cp1626.patch
+    fi
     # patch e1000e.patch
     #grep E1000_DEV_ID_PCH_LBG_I219_LM3 drivers/net/ethernet/intel/e1000e/hw.h > /dev/null
     #if [ $? -ne 0 ]; then
@@ -246,6 +252,16 @@ function check_esd_files() {
     echo 0
   fi
 }
+
+# Checks if CP1626 driver is there, very superficial check.
+function check_cp1626_files() {
+  if [ -f ./drivers/cp1626/cp1626.h ]; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
 function kernel_build() {
    #preparing build environment
    echo "preparing build environment by installing libncurses5-dev build-essential libssl-dev ccache"
@@ -276,6 +292,25 @@ function kernel_build() {
       echo_red_white "Will build with ESD CAN support"
     fi
 
+    # CP1626 driver
+    if [ $(check_cp1626_files) -eq 0 ]; then
+      echo_red_white "To support CP1626, CP1626 driver supplied by Siemens is required , but not found."
+      echo_red_white "Please refer to CP1626-README.md for more information."
+      echo_red_white "Build will continue after 6 seconds, but CP1626 support will not be built-in; "
+      echo_red_white "type ctrl+c to interrupt if that's not what you want."
+      sleep 6
+      # Create empty kernel config file to make config happy
+      if [ ! -f ./drivers/cp1626/Kconfig ]; then
+        echo "" > ./drivers/cp1626/Kconfig
+      fi
+      if [ ! -f ./drivers/cp1626/Makefile ]; then
+        echo "" > ./drivers/cp1626/Makefile
+      fi
+    else
+      echo "CONFIG_CP1626=m" >> .config
+      echo_red_white "Will build with CP1626 support"
+    fi
+
     make oldconfig
     make -j ${CPUNUM}
     if [ $? -ne 0 ];then
@@ -293,6 +328,9 @@ function kernel_build() {
     cp System.map ${INSTALL_PATH}/System.map-${_KERNEL_VERSION}
     cp .config ${INSTALL_PATH}/config-${_KERNEL_VERSION}
     cp ${DIR}/install*.sh ${INSTALL_PATH}
+    if [ $(check_cp1626_files) -eq 1 ]; then
+	cp ${DIR}/services ${INSTALL_PATH}/
+    fi
 
     # build header
     # TODO to replace with an elegant method

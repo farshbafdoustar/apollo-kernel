@@ -17,6 +17,10 @@ cp -a firmware/* /lib/firmware/
 
 mkinitramfs -o /boot/initrd.img-${kver} ${kver}
 
+#setting the last kenel as default kernel
+sed -i 's/GRUB_DEFAULT=[0-9]*/GRUB_DEFAULT=saved/g' /etc/default/grub
+grub-set-default "Advanced options for Ubuntu>Ubuntu, with Linux 4.9.178-vetron-1-RT"
+
 update-grub
 
 sync

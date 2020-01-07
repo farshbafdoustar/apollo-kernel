@@ -1,0 +1,178 @@
+#!/bin/bash
+# Copyright (C) SIEMENS CORP., 2014 All rights reserved.
+# All rights reserved.
+#
+# Author: Alexander Kern, 2005
+#
+#
+# /etc/init.d/cp1626_loader
+#
+# Script to load or unload the example driver for CP1626.
+#
+### BEGIN INIT INFO
+# Provides:       cp1626_loader
+# Required-Start:
+# Required-Stop:
+# Default-Start:  2 3 5
+# Default-Stop:
+# Short-Description: Siemens CP16xx example driver
+# Description:    Script to load or unload the example driver for CP1626.
+### END INIT INFO
+
+module="cp1626"
+device="cp1626"
+mode="666"
+MODPROBE=/sbin/modprobe
+KERNELDIR="/lib/modules/$(uname -r)/"
+RTAI_MODULE_PATH="/usr/realtime/modules/"
+RTAI_SUB_DIR="rtai/"
+CP16XX_SUB_DIR="kernel/drivers/cp1626/"
+MD5=/usr/bin/md5sum
+
+# SuSE init script style
+if [ -f /etc/rc.status ] ; then
+    . /etc/rc.status
+fi
+
+if [ -f /etc/rc.status ] ; then
+    rc_reset
+fi
+case "$1" in
+    start)
+        echo -n "load cp1626 example driver..."
+        # invoke insmod with all arguments we got
+        # and use a pathname, as newer modutils don't look in . by default
+        if [ $(lsmod | grep $module | wc -l) -ne "0" ] ; then
+            echo -n " already loaded"
+            if [ -f /etc/rc.status ] ; then
+                rc_failed
+            else
+                echo -n "failed"
+            fi
+            exit 1
+        fi
+    
+        # check for RTAI modules
+        if [ $($MODPROBE -vn $module|grep rtai_hal.ko|wc -l) -eq 1 ] ; then
+            echo -n "....in RTAI mode...." 
+            for MODUL_NAME in "rtai_hal" \
+                              "rtai_sched" \
+                              "rtai_tasklets" \
+                              "rtai_sem"
+            do
+                if [ -n "${RTAI_SUB_DIR}$MODUL_NAME" ] ; then
+                    if [ $(lsmod| grep $MODUL_NAME | wc -l) -eq "0" ] ; then 
+                        /sbin/insmod ${KERNELDIR}${RTAI_SUB_DIR}$MODUL_NAME.ko || exit 1
+                    fi
+                fi
+            done
+            
+            /sbin/insmod ${KERNELDIR}${CP16XX_SUB_DIR}$module.ko || exit 1
+          else
+            echo -n "....in normal mode...." 
+            /sbin/modprobe $module || exit 1
+          fi
+          
+        major=`cat /proc/devices | awk "\\$2==\"$device\" {print \\$1}"`
+
+        if [ "$major" = "" ] ; then
+            echo -n "no CP found or loading failure"
+            if [ -f /etc/rc.status ] ; then
+                rc_failed
+            else
+                echo -n "failed"
+            fi
+            exit 1
+        fi
+
+        # Remove stale nodes and replace them, then give gid and perms
+        # Usually the script is shorter, it's simple that has several devices in it.
+
+        index=0
+
+        for i in $major
+        do  {
+            c=$((index++))
+        #remove all files
+            rm -rf /dev/${device}_$c
+        #create new directory
+            mkdir /dev/${device}_$c
+        #create device files
+            mknod /dev/${device}_$c/stream_req    c $i 0
+            mknod /dev/${device}_$c/stream_resp   c $i 1
+            mknod /dev/${device}_$c/synch         c $i 2
+            mknod /dev/${device}_$c/alarm         c $i 3
+            mknod /dev/${device}_$c/modind        c $i 4
+            mknod /dev/${device}_$c/datarec       c $i 5
+            mknod /dev/${device}_$c/service       c $i 6
+            mknod /dev/${device}_$c/notify        c $i 7
+            mknod /dev/${device}_$c/watchdog      c $i 8
+            mknod /dev/${device}_$c/control       c $i 9
+        #set permissions
+            chmod -f $mode /dev/${device}_$c/*
+        }
+        done
+
+        if [ -f /etc/rc.status ] ; then
+            rc_status -v
+        else
+            echo "done"
+        fi
+        ;;
+
+    stop)
+        echo -n "unload cp1626 example driver..."
+        # invoke rmmod with all arguments we got
+        if [ $(lsmod | grep $module | wc -l) -eq "0" ] ; then
+            echo -n " not loaded"
+            if [ -f /etc/rc.status ] ; then
+                rc_failed
+            else
+                echo -n "failed"
+            fi
+            exit 1
+        fi
+
+        #/sbin/rmmod "${KERNELDIR}${CP16XX_SUB_DIR}$module.ko" || exit 1
+	/sbin/rmmod cp1626
+
+        # unload RTAI modules
+        for MODUL_NAME in "rtai_sem" \
+                          "rtai_tasklets" \
+                          "rtai_sched" \
+                          "rtai_hal"
+        do
+            if [ -n "${RTAI_SUB_DIR}$MODUL_NAME" ] ; then
+                if [ $(lsmod| grep $MODUL_NAME | wc -l) -ne "0" ] ; then 
+                    /sbin/rmmod ${KERNELDIR}${RTAI_SUB_DIR}$MODUL_NAME.ko || exit 1
+                fi
+            fi
+        done
+        
+
+        # Remove stale nodes
+        rm -rf /dev/${device}[0-9]/*
+
+        if [ -f /etc/rc.status ] ; then
+            rc_status -v
+        else
+            echo "done"
+        fi
+        ;;
+
+    restart)
+        $0 stop
+        $0 start
+        if [ -f /etc/rc.status ] ; then
+            rc_status
+        fi
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+if [ -f /etc/rc.status ] ; then
+    rc_exit
+fi
