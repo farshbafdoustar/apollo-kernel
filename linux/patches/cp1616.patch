@@ -1,0 +1,50 @@
+diff -Naur linux-4.4.32/drivers/cp1616/Kconfig.esd linux-patched/drivers/cp1616/Kconfig.esd
+--- linux-4.4.32/drivers/cp1616/Kconfig	1970-01-01 08:00:00.000000000 +0800
++++ linux-patched/drivers/cp1616/Kconfig	2017-07-11 14:02:17.779698197 +0800
+@@ -0,0 +1,6 @@
++
++config CP1616
++    tristate "CP1616 driver"
++    ---help---
++      CP1616's new driver.
++
+diff -Naur linux-4.4.32/drivers/cp1616/Makefile.esd linux-patched/drivers/cp1616/Makefile.esd
+--- linux-4.4.32/drivers/cp1616/Makefile	1970-01-01 08:00:00.000000000 +0800
++++ linux-patched/drivers/cp1616/Makefile	2017-07-11 14:02:17.779698197 +0800
+@@ -0,0 +1,17 @@
++DRVVERSION=-DLEVEL=1 -DREVI=0 -DBUILD=0
++CP1616_CPPFLAGS += -I $(src)
++CP1616_CPPFLAGS += -D__KERNEL__ -D_DPR_HOST_ -D_DPR_LINUX 
++
++ccflags-y += $(CP1616_CPPFLAGS)
++
++ifneq (${KERNELRELEASE},)
++	obj-m += cp1616.o
++	cp1616-y := linux/cp1616_linux.o
++else
++	KERNEL_SOURCE ?= /lib/modules/$(shell uname -r)/build
++	PWD := $(shell pwd)
++default:
++	${MAKE} -C ${KERNEL_SOURCE} M=${PWD} modules
++clean:
++	${MAKE} -C ${KERNEL_SOURCE} M=${PWD} clean
++endif
+diff -Naur linux-4.4.32/drivers/Kconfig linux-patched/drivers/Kconfig
+--- linux-4.4.32/drivers/Kconfig	2016-11-15 14:47:35.000000000 +0800
++++ linux-patched/drivers/Kconfig	2017-07-11 14:02:17.535698203 +0800
+@@ -198,4 +198,6 @@
+ 
+ source "drivers/fpga/Kconfig"
+ 
++source "drivers/cp1616/Kconfig"
++
+ endmenu
+diff -Naur linux-4.4.32/drivers/Makefile linux-patched/drivers/Makefile
+--- linux-4.4.32/drivers/Makefile	2016-11-15 14:47:35.000000000 +0800
++++ linux-patched/drivers/Makefile	2017-07-11 14:02:17.535698203 +0800
+@@ -172,4 +172,5 @@
+ obj-$(CONFIG_ANDROID)		+= android/
+ obj-$(CONFIG_NVMEM)		+= nvmem/
+ obj-$(CONFIG_FPGA)		+= fpga/
+ obj-$(CONFIG_ESDCAN)		+= esdcan/
++obj-$(CONFIG_CP1616)		+= cp1616/
